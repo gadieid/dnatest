@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Server Performance Monitor</h1>
+            <div class="status-info">
+                <span id="last-update">Loading...</span>
+                <span id="refresh-status" class="refresh-indicator">●</span>
+            </div>
+        </header>
+        
+        <main>
+            <table id="metrics-table" class="sortable">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-column="name">Server Name <span class="sort-indicator">↕</span></th>
+                        <th class="sortable" data-column="host">Host <span class="sort-indicator">↕</span></th>
+                        <th class="sortable" data-column="status">Status <span class="sort-indicator">↕</span></th>
+                        <th class="sortable" data-column="cpu">CPU Usage <span class="sort-indicator">↕</span></th>
+                        <th class="sortable" data-column="memory">Memory Usage <span class="sort-indicator">↕</span></th>
+                        <th class="sortable" data-column="load">Load Average <span class="sort-indicator">↕</span></th>
+                        <th class="sortable" data-column="disk">Disk I/O <span class="sort-indicator">↕</span></th>
+                        <th class="sortable" data-column="network">Network I/O <span class="sort-indicator">↕</span></th>
+                    </tr>
+                </thead>
+                <tbody id="metrics-body">
+                    <tr>
+                        <td colspan="8" class="loading">Loading metrics...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </main>
+    </div>
+    
+    <script>
+        let currentData = [];
+        let sortColumn = null;
+        let sortDirection = 'asc';
+        let refreshInterval = 60000; // Default 60 seconds
+        let refreshTimer = null;
+
+        // Table sorting functionality
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+
+            currentData.sort((a, b) => {
+                let aVal = a[column];
+                let bVal = b[column];
+
+                // Handle numeric values
+                if (column === 'cpu' || column === 'memory' || column === 'load') {
+                    aVal = parseFloat(aVal) || 0;
+                    bVal = parseFloat(bVal) || 0;
+                } else {
+                    aVal = String(aVal || '').toLowerCase();
+                    bVal = String(bVal || '').toLowerCase();
+                }
+
+                if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            updateSortIndicators();
+            renderTable();
+        }
+
+        function updateSortIndicators() {
+            document.querySelectorAll('.sort-indicator').forEach(ind => {
+                ind.textContent = '↕';
+            });
+            
+            if (sortColumn) {
+                const header = document.querySelector(`th[data-column="${sortColumn}"]`);
+                if (header) {
+                    const indicator = header.querySelector('.sort-indicator');
+                    if (indicator) {
+                        indicator.textContent = sortDirection === 'asc' ? '↑' : '↓';
+                    }
+                }
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('metrics-body');
+            
+            if (currentData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="no-data">No server data available</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = currentData.map(server => {
+                const statusClass = server.status === 'success' ? 'status-success' : 'status-error';
+                const statusText = server.status === 'success' ? 'Online' : (server.error || 'Error');
+                
+                return `
+                    <tr>
+                        <td>${escapeHtml(server.name)}</td>
+                        <td>${escapeHtml(server.host)}</td>
+                        <td><span class="status-badge ${statusClass}">${escapeHtml(statusText)}</span></td>
+                        <td>${escapeHtml(server.cpu_usage || 'N/A')}</td>
+                        <td>${escapeHtml(server.memory_usage || 'N/A')}<br><small>${escapeHtml(server.memory_detail || '')}</small></td>
+                        <td>${escapeHtml(server.load_avg || 'N/A')}</td>
+                        <td>${escapeHtml(server.disk_io || 'N/A')}</td>
+                        <td>${escapeHtml(server.network_io || 'N/A')}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function updateMetrics() {
+            fetch('/api/metrics')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentData = data.metrics || [];
+                        refreshInterval = (data.refresh_interval || 60) * 1000;
+                        renderTable();
+                        updateLastUpdateTime();
+                        updateRefreshStatus(true);
+                    } else {
+                        console.error('Failed to fetch metrics:', data.error);
+                        updateRefreshStatus(false);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching metrics:', error);
+                    updateRefreshStatus(false);
+                });
+        }
+
+        function updateLastUpdateTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString();
+            document.getElementById('last-update').textContent = `Last update: ${timeStr}`;
+        }
+
+        function updateRefreshStatus(success) {
+            const indicator = document.getElementById('refresh-status');
+            indicator.className = 'refresh-indicator ' + (success ? 'success' : 'error');
+        }
+
+        function startAutoRefresh() {
+            // Initial load
+            updateMetrics();
+            
+            // Set up periodic refresh
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+            }
+            refreshTimer = setInterval(updateMetrics, refreshInterval);
+        }
+
+        // Set up event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            // Make table headers clickable
+            document.querySelectorAll('th.sortable').forEach(header => {
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', () => {
+                    const column = header.getAttribute('data-column');
+                    if (column) {
+                        sortTable(column);
+                    }
+                });
+            });
+
+            // Start auto-refresh
+            startAutoRefresh();
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,18 @@
+[Unit]
+Description=Server Monitoring Web Application
+After=network.target
+
+[Service]
+Type=simple
+User=gadi
+WorkingDirectory=/home/gadi/Cursor/servers-monitor
+Environment="PATH=/usr/bin:/usr/local/bin"
+ExecStart=/usr/bin/python3 /home/gadi/Cursor/servers-monitor/app.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

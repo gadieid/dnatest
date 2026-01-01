@@ -1,0 +1,18 @@
+{
+  "servers": [
+    {
+      "name": "Web Server 1",
+      "host": "192.168.1.10",
+      "user": "ubuntu"
+    },
+    {
+      "name": "DB Server",
+      "host": "192.168.1.20",
+      "user": "ubuntu"
+    }
+  ],
+  "ssh_key_path": "/home/gadi/.ssh/id_rsa",
+  "refresh_interval": 60,
+  "port": 8080
+}
+
